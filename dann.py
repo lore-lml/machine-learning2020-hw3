@@ -126,8 +126,10 @@ def train_src(model, dataloader, optimizer, criterion, scheduler, current_step, 
             print('Step {}, Loss_train {}'.format(current_step, loss.item()))
 
         loss.backward()
+        optimizer.step()
+        current_step += 1
 
-    return cumulative_loss
+    return cumulative_loss, current_step
 
 
 def test_target(model, dataloader, criterion, device='cuda'):
