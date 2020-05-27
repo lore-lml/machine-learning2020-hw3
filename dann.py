@@ -109,7 +109,7 @@ class ReverseLayerF(Function):
         return ReverseLayerF.apply(x, constant)
 
 
-def train_src(model, dataloader, optimizer, criterion, scheduler, current_step, device='cuda'):
+def train_src(model, dataloader, optimizer, criterion, current_step, device='cuda'):
     cumulative_loss =.0
     for images, labels in dataloader:
         images = images.to(device)
@@ -144,4 +144,46 @@ def test_target(model, dataloader, criterion, device='cuda'):
         running_corrects += torch.sum(preds == labels.data).data.item()
 
     return running_corrects
+
+
+def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, criterion, current_step, alpha=0.1, device='cuda'):
+    cum_loss_src_y = .0
+    cum_loss_src_d = .0
+    cum_loss_tgt_d = .0
+
+    for (src_img, src_labels), (tgt_img, tgt_labels) in zip(src_dataloader, tgt_dataloader):
+        src_img = src_img.to(device)
+        src_labels = src_labels.to(device)
+        src_fake_labels = torch.zeros(len(src_labels), 1).to(device)
+        tgt_img = tgt_img.to(device)
+        tgt_fake_labels = torch.ones(len(tgt_labels), 1).to(device)
+
+        model.train()
+        optimizer.zero_grad()
+
+        #TRAIN ON SRC CLASSIFIER BRANCH
+        outputs = model(src_img)
+        loss_src_y = criterion(outputs, src_labels)
+        cum_loss_src_y += loss_src_y.item()
+        loss_src_y.backward()
+
+        # TRAIN ON SRC DISCRIMINATOR BRANCH
+        outputs = model(src_img, alpha=alpha)
+        loss_src_d = criterion(outputs, src_fake_labels)
+        cum_loss_src_d += loss_src_d.item()
+        loss_src_d.backward()
+
+        # TRAIN ON TARGET DISCRIMINATOR BRANCH
+        outputs = model(tgt_img, alpha=alpha)
+        loss_tgt_d = criterion(outputs, tgt_fake_labels)
+        cum_loss_tgt_d += loss_tgt_d.item()
+        loss_tgt_d.backward()
+
+        if current_step % 10 == 0:
+            print(f"Step {current_step}\nLoss SRC Gy {loss_src_y.item()}, Loss SRC Gd {loss_src_d.item()}, Loss SRC Gy {loss_tgt_d.item()}")
+
+        optimizer.step()
+        current_step += 1
+
+    return cum_loss_src_y, cum_loss_src_d, cum_loss_tgt_d, current_step
 
