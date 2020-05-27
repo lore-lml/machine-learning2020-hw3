@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Function
-
+from tqdm import tqdm
 try:
     from torch.hub import load_state_dict_from_url
 except ImportError:
@@ -16,7 +16,7 @@ model_urls = {
 
 class AlexDann(nn.Module):
 
-    def __init__(self, num_classes=7):
+    def __init__(self, num_classes=1000):
         super(AlexDann, self).__init__()
         self.features = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
@@ -45,7 +45,7 @@ class AlexDann(nn.Module):
             nn.Linear(4096, num_classes),
         )
 
-        self.dann_classifier = nn.Sequential(
+        self.domain_classifier = nn.Sequential(
             nn.Dropout(),
             nn.Linear(256 * 6 * 6, 4096),
             nn.ReLU(inplace=True),
@@ -64,11 +64,11 @@ class AlexDann(nn.Module):
             x = self.classifier(x)
         else:
             x = ReverseLayerF.grad_reverse(x, alpha)
-            x = self.dann_classifier(x)
+            x = self.domain_classifier(x)
         return x
 
 
-def alexdann(pretrained=False, progress=True, **kwargs):
+def alexdann(pretrained=True, progress=True, num_classes=7, **kwargs):
     r"""AlexNet model architecture from the
     `"One weird trick..." <https://arxiv.org/abs/1404.5997>`_ paper.
 
@@ -81,9 +81,11 @@ def alexdann(pretrained=False, progress=True, **kwargs):
         state_dict = load_state_dict_from_url(model_urls['alexdann'],
                                               progress=progress)
         model.load_state_dict(state_dict, strict=False)
+        model.classifier[6] = nn.Linear(4096, num_classes)
+        model.domain_classifier[6] = nn.Linear(4096, num_classes)
         for i in [1, 4, 6]:
-            model.dann_classifier[i].weight.data = model.classifier[i].weight.data
-            model.dann_classifier[i].bias.data = model.classifier[i].bias.data
+            model.domain_classifier[i].weight.data = model.classifier[i].weight.data
+            model.domain_classifier[i].bias.data = model.classifier[i].bias.data
 
     return model
 
@@ -105,4 +107,39 @@ class ReverseLayerF(Function):
     @staticmethod
     def grad_reverse(x, constant):
         return ReverseLayerF.apply(x, constant)
+
+
+def train_src(model, dataloader, optimizer, criterion, scheduler, current_step, device='cuda'):
+    cumulative_loss =.0
+    for images, labels in dataloader:
+        images = images.to(device)
+        labels = labels.to(device)
+        model.train()
+
+        optimizer.zero_grad()
+        outputs = model(images)
+
+        loss = criterion(outputs, labels)
+        cumulative_loss += loss.item()
+
+        if current_step % 10 == 0:
+            print('Step {}, Loss_train {}'.format(current_step, loss.item()))
+
+        loss.backward()
+
+    return cumulative_loss
+
+
+def test_target(model, dataloader, criterion, device='cuda'):
+    model.eval()
+    running_corrects = 0
+    for images, labels in tqdm(dataloader):
+        images = images.to(device)
+        labels = labels.to(device)
+
+        outputs = model(images)
+        _, preds = torch.max(outputs.data, 1)
+        running_corrects += torch.sum(preds == labels.data).data.item()
+
+    return running_corrects
 
