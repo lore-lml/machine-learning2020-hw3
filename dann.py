@@ -154,9 +154,9 @@ def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, crit
     for (src_img, src_labels), (tgt_img, tgt_labels) in zip(src_dataloader, tgt_dataloader):
         src_img = src_img.to(device)
         src_labels = src_labels.to(device)
-        src_fake_labels = torch.zeros(len(src_labels), 1).to(device)
+        src_fake_labels = torch.zeros(len(src_labels), dtype=torch.int64).to(device)
         tgt_img = tgt_img.to(device)
-        tgt_fake_labels = torch.ones(len(tgt_labels), 1).to(device)
+        tgt_fake_labels = torch.ones(len(tgt_labels), dtype=torch.int64).to(device)
 
         model.train()
         optimizer.zero_grad()
@@ -180,7 +180,7 @@ def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, crit
         loss_tgt_d.backward()
 
         if current_step % 10 == 0:
-            print(f"Step {current_step}\nLoss SRC Gy {loss_src_y.item()}, Loss SRC Gd {loss_src_d.item()}, Loss SRC Gy {loss_tgt_d.item()}")
+            print(f"Step {current_step}\nLoss SRC Gy {loss_src_y.item()}, Loss SRC Gd {loss_src_d.item()}, Loss TGT Gd {loss_tgt_d.item()}")
 
         optimizer.step()
         current_step += 1
