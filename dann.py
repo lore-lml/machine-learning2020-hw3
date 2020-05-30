@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 from torch.autograd import Function
@@ -109,6 +110,13 @@ class ReverseLayerF(Function):
         return ReverseLayerF.apply(x, constant)
 
 
+def adjust_alpha(i, epoch, min_len, nepochs):
+    p = float(i + epoch * min_len) / nepochs / min_len
+    o = -10
+    alpha = 2. / (1. + math.exp(o * p)) - 1
+    # print 'lamda: %.4f' % lamda
+    return alpha
+
 def train_src(model, dataloader, optimizer, criterion, current_step, device='cuda'):
     cumulative_loss =.0
     for images, labels in dataloader:
@@ -146,12 +154,16 @@ def test_target(model, dataloader, criterion, device='cuda'):
     return running_corrects
 
 
-def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, criterion, current_step, alpha=0.1, device='cuda'):
-    cum_loss_src_y = .0
-    cum_loss_src_d = .0
-    cum_loss_tgt_d = .0
+def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, class_criterion, domain_criterion,
+                          current_step, current_epoch, max_epoch, alpha='dynamic', device='cuda'):
+    cum_loss_class = .0
+    cum_loss_domain = .0
+    len_data_loader = min(len(src_dataloader), len(tgt_dataloader))
+    dynamic = True if alpha == 'dynamic' else False
 
-    for (src_img, src_labels), (tgt_img, tgt_labels) in zip(src_dataloader, tgt_dataloader):
+    for i, (src_iter, tgt_iter) in enumerate(zip(src_dataloader, tgt_dataloader)):
+        src_img, src_labels = src_iter
+        tgt_img, tgt_labels = tgt_iter
         src_img = src_img.to(device)
         src_labels = src_labels.to(device)
         src_fake_labels = torch.zeros(len(src_labels), dtype=torch.int64).to(device)
@@ -161,29 +173,29 @@ def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, crit
         model.train()
         optimizer.zero_grad()
 
-        #TRAIN ON SRC CLASSIFIER BRANCH
-        outputs = model(src_img)
-        loss_src_y = criterion(outputs, src_labels)
-        cum_loss_src_y += loss_src_y.item()
-        loss_src_y.backward()
+        if dynamic:
+            alpha = adjust_alpha(i, current_epoch, len_data_loader, max_epoch)
 
-        # TRAIN ON SRC DISCRIMINATOR BRANCH
-        outputs = model(src_img, alpha=alpha)
-        loss_src_d = criterion(outputs, src_fake_labels)
-        cum_loss_src_d += loss_src_d.item()
-        loss_src_d.backward()
+        # TRAIN ON SRC CLASSIFIER BRANCH
+        class_outputs = model(src_img)
+        class_loss = class_criterion(class_outputs, src_labels)
+        cum_loss_class += class_loss.item()
+        class_loss.backward()
 
-        # TRAIN ON TARGET DISCRIMINATOR BRANCH
-        outputs = model(tgt_img, alpha=alpha)
-        loss_tgt_d = criterion(outputs, tgt_fake_labels)
-        cum_loss_tgt_d += loss_tgt_d.item()
-        loss_tgt_d.backward()
+        # TRAIN ON DISCRIMINATOR BRANCH BOTH SRC AND TARGET
+        domain_src_outputs = model(src_img, alpha=alpha)
+        loss_src_d = domain_criterion(domain_src_outputs, src_fake_labels)
+        domain_tgt_outputs = model(tgt_img, alpha=alpha)
+        loss_tgt_d = domain_criterion(domain_tgt_outputs, tgt_fake_labels)
+        domain_loss = loss_src_d + loss_tgt_d
+        cum_loss_domain += domain_loss
+        domain_loss.backward()
 
         if current_step % 10 == 0:
-            print(f"Step {current_step}\nLoss SRC Gy {loss_src_y.item()}, Loss SRC Gd {loss_src_d.item()}, Loss TGT Gd {loss_tgt_d.item()}")
+            print(f"Step {current_step}\nClass Loss {class_loss.item()}, Domain Loss {domain_loss.item()}")
 
         optimizer.step()
         current_step += 1
 
-    return cum_loss_src_y, cum_loss_src_d, cum_loss_tgt_d, current_step
+    return (cum_loss_class / len_data_loader), (cum_loss_domain / len_data_loader), current_step
 
