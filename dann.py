@@ -58,7 +58,7 @@ class AlexDann(nn.Module):
 
     def forward(self, x, alpha=None):
         x = self.features(x)
-        # x = self.avgpool(x)
+        x = self.avgpool(x)
         x = torch.flatten(x, 1)
 
         if alpha is None:
@@ -198,4 +198,3 @@ def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, clas
         current_step += 1
 
     return (cum_loss_class / len_data_loader), (cum_loss_domain / len_data_loader), current_step
-
