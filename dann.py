@@ -112,10 +112,11 @@ class ReverseLayerF(Function):
 
 def adjust_alpha(i, epoch, min_len, nepochs):
     p = float(i + epoch * min_len) / nepochs / min_len
-    o = -10
-    alpha = 2. / (1. + math.exp(o * p)) - 1
+    o = 1
+    alpha = 2. / (1. + math.exp(-o * p)) - 1
     # print 'lamda: %.4f' % lamda
     return alpha
+
 
 def train_src(model, dataloader, optimizer, criterion, current_step, device='cuda'):
     cumulative_loss =.0
