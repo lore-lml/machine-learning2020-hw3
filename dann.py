@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Function
 from tqdm import tqdm
+import copy
 try:
     from torch.hub import load_state_dict_from_url
 except ImportError:
@@ -84,9 +85,9 @@ def alexdann(pretrained=True, progress=True, num_classes=7, **kwargs):
         model.load_state_dict(state_dict, strict=False)
         model.classifier[6] = nn.Linear(4096, num_classes)
         model.domain_classifier[6] = nn.Linear(4096, num_classes)
-        for i in [1, 4, 6]:
-            model.domain_classifier[i].weight.data = model.classifier[i].weight.data
-            model.domain_classifier[i].bias.data = model.classifier[i].bias.data
+        for i in [1, 4]:
+            model.domain_classifier[i].weight.data = copy.deepcopy(model.classifier[i].weight.data)
+            model.domain_classifier[i].bias.data = copy.deepcopy(model.classifier[i].bias.data)
 
     return model
 
