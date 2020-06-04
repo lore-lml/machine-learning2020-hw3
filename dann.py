@@ -84,7 +84,6 @@ def alexdann(pretrained=True, progress=True, num_classes=7, **kwargs):
                                               progress=progress)
         model.load_state_dict(state_dict, strict=False)
         model.classifier[6] = nn.Linear(4096, num_classes)
-        model.domain_classifier[6] = nn.Linear(4096, num_classes)
         for i in [1, 4]:
             model.domain_classifier[i].weight.data = copy.deepcopy(model.classifier[i].weight.data)
             model.domain_classifier[i].bias.data = copy.deepcopy(model.classifier[i].bias.data)
