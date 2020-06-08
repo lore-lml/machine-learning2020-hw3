@@ -184,8 +184,8 @@ def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, clas
         domain_tgt_outputs = model(tgt_img, alpha=alpha)
         loss_tgt_d = domain_criterion(domain_tgt_outputs, tgt_fake_labels)
         domain_loss = loss_src_d + loss_tgt_d
-        cum_loss_domain += domain_loss
         domain_loss.backward()
+        cum_loss_domain += domain_loss.item()
 
         if current_step % 10 == 0:
             print(f"Step {current_step}\nClass Loss {class_loss.item()}, Domain Loss {domain_loss.item()}")
