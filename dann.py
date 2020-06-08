@@ -12,7 +12,8 @@ except ImportError:
 __all__ = ['AlexDann', 'alexdann']
 
 model_urls = {
-    'alexdann': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
+    'pytorch': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
+    'caffe': 'http://dl.caffe.berkeleyvision.org/bvlc_alexnet.caffemodel'
 }
 
 
@@ -70,17 +71,11 @@ class AlexDann(nn.Module):
         return x
 
 
-def alexdann(pretrained=True, progress=True, num_classes=7, **kwargs):
-    r"""AlexNet model architecture from the
-    `"One weird trick..." <https://arxiv.org/abs/1404.5997>`_ paper.
+def alexdann(pretrained=True, progress=True, num_classes=7, src='pytorch', **kwargs):
 
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-        progress (bool): If True, displays a progress bar of the download to stderr
-    """
     model = AlexDann(**kwargs)
     if pretrained:
-        state_dict = load_state_dict_from_url(model_urls['alexdann'],
+        state_dict = load_state_dict_from_url(model_urls[src],
                                               progress=progress)
         model.load_state_dict(state_dict, strict=False)
         model.classifier[6] = nn.Linear(4096, num_classes)
@@ -112,7 +107,7 @@ class ReverseLayerF(Function):
 
 def adjust_alpha(i, epoch, min_len, nepochs):
     p = float(i + epoch * min_len) / nepochs / min_len
-    o = 1
+    o = 10
     alpha = 2. / (1. + math.exp(-o * p)) - 1
     # print 'lamda: %.4f' % lamda
     return alpha
@@ -141,7 +136,7 @@ def train_src(model, dataloader, optimizer, criterion, current_step, device='cud
     return cumulative_loss, current_step
 
 
-def test_target(model, dataloader, criterion, device='cuda'):
+def test_target(model, dataloader, device='cuda'):
     model.eval()
     running_corrects = 0
     for images, labels in tqdm(dataloader):
