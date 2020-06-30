@@ -70,7 +70,7 @@ class AlexNet(nn.Module):
         return x
 
 
-def alexnet(pretrained=True, progress=True, num_classes=7, src='pytorch', **kwargs):
+def alexnet(pretrained=True, progress=True, num_classes=7, **kwargs):
 
     model = AlexNet(**kwargs)
     if pretrained:
@@ -81,6 +81,8 @@ def alexnet(pretrained=True, progress=True, num_classes=7, src='pytorch', **kwar
         for i in [1, 4]:
             model.discriminator[i].weight.data = copy.deepcopy(model.classifier[i].weight.data)
             model.discriminator[i].bias.data = copy.deepcopy(model.classifier[i].bias.data)
+    else:
+        model.classifier[6] = nn.Linear(4096, num_classes)
 
     return model
 
@@ -149,7 +151,7 @@ def test_target(model, dataloader, device='cuda'):
     return running_corrects
 
 
-def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, class_criterion, domain_criterion,
+def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, criterion,
                           current_step, current_epoch, max_epoch, alpha='dynamic', device='cuda'):
     cum_loss_class = .0
     cum_loss_domain = .0
@@ -174,16 +176,16 @@ def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, clas
 
         # CLASSIFIER
         class_outputs = model(src_img)
-        class_loss = class_criterion(class_outputs, src_labels)
+        class_loss = criterion(class_outputs, src_labels)
         cum_loss_class += class_loss.item()
         class_loss.backward()
 
         # DISCRIMINATOR SRC
         domain_src_outputs = model(src_img, alpha=alpha)
-        loss_src_d = domain_criterion(domain_src_outputs, src_fake_labels)
+        loss_src_d = criterion(domain_src_outputs, src_fake_labels)
         # DISCRIMINATOR TGT
         domain_tgt_outputs = model(tgt_img, alpha=alpha)
-        loss_tgt_d = domain_criterion(domain_tgt_outputs, tgt_fake_labels)
+        loss_tgt_d = criterion(domain_tgt_outputs, tgt_fake_labels)
         domain_loss = loss_src_d + loss_tgt_d
         domain_loss.backward()
         cum_loss_domain += domain_loss.item()
