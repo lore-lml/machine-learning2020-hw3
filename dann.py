@@ -9,18 +9,17 @@ try:
 except ImportError:
     from torch.utils.model_zoo import load_url as load_state_dict_from_url
 
-__all__ = ['AlexDann', 'alexdann']
+__all__ = ['AlexNet', 'alexnet']
 
 model_urls = {
-    'pytorch': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
-    'caffe': 'http://dl.caffe.berkeleyvision.org/bvlc_alexnet.caffemodel'
+    'pytorch': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth'
 }
 
 
-class AlexDann(nn.Module):
+class AlexNet(nn.Module):
 
     def __init__(self, num_classes=1000):
-        super(AlexDann, self).__init__()
+        super(AlexNet, self).__init__()
         self.features = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
             nn.ReLU(inplace=True),
@@ -48,7 +47,7 @@ class AlexDann(nn.Module):
             nn.Linear(4096, num_classes),
         )
 
-        self.domain_classifier = nn.Sequential(
+        self.discriminator = nn.Sequential(
             nn.Dropout(),
             nn.Linear(256 * 6 * 6, 4096),
             nn.ReLU(inplace=True),
@@ -67,21 +66,21 @@ class AlexDann(nn.Module):
             x = self.classifier(x)
         else:
             x = ReverseLayerF.grad_reverse(x, alpha)
-            x = self.domain_classifier(x)
+            x = self.discriminator(x)
         return x
 
 
-def alexdann(pretrained=True, progress=True, num_classes=7, src='pytorch', **kwargs):
+def alexnet(pretrained=True, progress=True, num_classes=7, src='pytorch', **kwargs):
 
-    model = AlexDann(**kwargs)
+    model = AlexNet(**kwargs)
     if pretrained:
         state_dict = load_state_dict_from_url(model_urls[src],
                                               progress=progress)
         model.load_state_dict(state_dict, strict=False)
         model.classifier[6] = nn.Linear(4096, num_classes)
         for i in [1, 4]:
-            model.domain_classifier[i].weight.data = copy.deepcopy(model.classifier[i].weight.data)
-            model.domain_classifier[i].bias.data = copy.deepcopy(model.classifier[i].bias.data)
+            model.discriminator[i].weight.data = copy.deepcopy(model.classifier[i].weight.data)
+            model.discriminator[i].bias.data = copy.deepcopy(model.classifier[i].bias.data)
 
     return model
 
@@ -105,7 +104,7 @@ class ReverseLayerF(Function):
         return ReverseLayerF.apply(x, constant)
 
 
-def adjust_alpha(i, epoch, min_len, nepochs):
+def _alpha_scheduling(i, epoch, min_len, nepochs):
     p = float(i + epoch * min_len) / nepochs / min_len
     o = 10
     alpha = 2. / (1. + math.exp(-o * p)) - 1
@@ -113,7 +112,7 @@ def adjust_alpha(i, epoch, min_len, nepochs):
     return alpha
 
 
-def train_src(model, dataloader, optimizer, criterion, current_step, device='cuda'):
+def train_no_dann(model, dataloader, optimizer, criterion, current_step, device='cuda'):
     cumulative_loss =.0
     for images, labels in dataloader:
         images = images.to(device)
@@ -162,6 +161,7 @@ def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, clas
         tgt_img, tgt_labels = tgt_iter
         src_img = src_img.to(device)
         src_labels = src_labels.to(device)
+
         src_fake_labels = torch.zeros(len(src_labels), dtype=torch.int64).to(device)
         tgt_img = tgt_img.to(device)
         tgt_fake_labels = torch.ones(len(tgt_labels), dtype=torch.int64).to(device)
@@ -170,17 +170,18 @@ def dann_train_src_target(model, src_dataloader, tgt_dataloader, optimizer, clas
         optimizer.zero_grad()
 
         if dynamic:
-            alpha = adjust_alpha(i, current_epoch, len_data_loader, max_epoch)
+            alpha = _alpha_scheduling(i, current_epoch, len_data_loader, max_epoch)
 
-        # TRAIN ON SRC CLASSIFIER BRANCH
+        # CLASSIFIER
         class_outputs = model(src_img)
         class_loss = class_criterion(class_outputs, src_labels)
         cum_loss_class += class_loss.item()
         class_loss.backward()
 
-        # TRAIN ON DISCRIMINATOR BRANCH BOTH SRC AND TARGET
+        # DISCRIMINATOR SRC
         domain_src_outputs = model(src_img, alpha=alpha)
         loss_src_d = domain_criterion(domain_src_outputs, src_fake_labels)
+        # DISCRIMINATOR TGT
         domain_tgt_outputs = model(tgt_img, alpha=alpha)
         loss_tgt_d = domain_criterion(domain_tgt_outputs, tgt_fake_labels)
         domain_loss = loss_src_d + loss_tgt_d

@@ -46,8 +46,3 @@ class Pacs(VisionDataset):
 
     def get_img_with_labels(self):
         return self.images, self.labels
-
-
-if __name__ == '__main__':
-    pacs = [Pacs("PACS", source=s) for s in ['art_painting', 'cartoon', 'photo', 'sketch']]
-    print(sum([len(p) for p in pacs]))
