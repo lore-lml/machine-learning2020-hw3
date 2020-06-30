@@ -11,9 +11,7 @@ except ImportError:
 
 __all__ = ['AlexNet', 'alexnet']
 
-model_urls = {
-    'pytorch': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth'
-}
+model_urls = 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth'
 
 
 class AlexNet(nn.Module):
@@ -74,8 +72,7 @@ def alexnet(pretrained=True, progress=True, num_classes=7, **kwargs):
 
     model = AlexNet(**kwargs)
     if pretrained:
-        state_dict = load_state_dict_from_url(model_urls[src],
-                                              progress=progress)
+        state_dict = load_state_dict_from_url(model_urls, progress=progress)
         model.load_state_dict(state_dict, strict=False)
         model.classifier[6] = nn.Linear(4096, num_classes)
         for i in [1, 4]:
